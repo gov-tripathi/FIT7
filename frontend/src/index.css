@@ -1,0 +1,185 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  html,
+  body {
+    @apply overflow-x-hidden;
+  }
+  body {
+    @apply bg-slate-950 text-slate-100;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 20% -10%, rgba(6, 182, 212, 0.06), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 110%, rgba(212, 255, 0, 0.04), transparent 60%);
+    background-attachment: fixed;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  h1,
+  h2 {
+    font-family: "Oswald", Impact, "Archivo Narrow", sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    @apply font-semibold;
+  }
+
+  h3 {
+    font-family: "Oswald", Impact, "Archivo Narrow", sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    @apply font-medium;
+  }
+
+  input,
+  select,
+  textarea {
+    @apply text-base sm:text-sm;
+  }
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
+@layer components {
+  .card {
+    @apply relative rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur
+           p-4 sm:p-5 shadow-lg shadow-black/30
+           transition-all duration-200;
+  }
+  .card-hover {
+    @apply transition hover:border-brand-600/60 hover:shadow-glow
+           hover:-translate-y-0.5;
+  }
+  /* Athletic accent stripe on the left edge of a card */
+  .card-accent::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 16px;
+    bottom: 16px;
+    width: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(
+      180deg,
+      theme("colors.brand.400") 0%,
+      theme("colors.volt.400") 50%,
+      theme("colors.ember.400") 100%
+    );
+    opacity: 0.9;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+           px-4 py-2 text-sm font-semibold uppercase tracking-brutal
+           transition disabled:opacity-50 disabled:cursor-not-allowed
+           active:translate-y-px;
+  }
+  .btn-primary {
+    @apply btn text-slate-950 font-bold;
+    background-image: linear-gradient(90deg, #d4ff00 0%, #b8ff00 100%);
+    box-shadow:
+      0 0 0 1px rgba(212, 255, 0, 0.4),
+      0 8px 24px -8px rgba(212, 255, 0, 0.55);
+  }
+  .btn-primary:hover {
+    background-image: linear-gradient(90deg, #e4ff50 0%, #d4ff00 100%);
+  }
+  .btn-ice {
+    @apply btn text-slate-950 font-bold;
+    background-image: linear-gradient(90deg, #22d3ee 0%, #06b6d4 100%);
+    box-shadow:
+      0 0 0 1px rgba(6, 182, 212, 0.4),
+      0 8px 24px -8px rgba(6, 182, 212, 0.55);
+  }
+  .btn-ice:hover {
+    background-image: linear-gradient(90deg, #67e8f9 0%, #22d3ee 100%);
+  }
+  .btn-ghost {
+    @apply btn border border-slate-700/80 text-slate-200
+           bg-slate-900/40 hover:border-slate-500
+           hover:bg-slate-800/70;
+  }
+  .btn-danger {
+    @apply btn bg-red-500/10 text-red-300 border border-red-500/30
+           hover:bg-red-500/20;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-slate-700 bg-slate-900/80
+           px-4 py-2.5 text-base sm:text-sm text-slate-100
+           placeholder:text-slate-500 transition;
+  }
+  .input:focus {
+    outline: none;
+    border-color: #d4ff00;
+    box-shadow: 0 0 0 2px rgba(212, 255, 0, 0.3);
+  }
+  .label {
+    @apply block font-display text-[11px] font-medium text-slate-400 mb-1.5
+           uppercase tracking-brutal;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5
+           text-[11px] font-semibold uppercase tracking-wider ring-1 ring-inset;
+  }
+
+  /* Scoreboard-style numeric display */
+  .stat-value {
+    @apply font-mono font-bold tabular-nums tracking-tight text-slate-100;
+  }
+
+  /* Section heading with bold underline accent */
+  .section-title {
+    @apply relative inline-block pb-1;
+  }
+  .section-title::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -4px;
+    height: 3px;
+    width: 44px;
+    border-radius: 9999px;
+    background: linear-gradient(
+      90deg,
+      theme("colors.volt.400"),
+      theme("colors.brand.400")
+    );
+  }
+
+  /* Animated "go" bar, subtle motion stripe across a card */
+  .go-bar {
+    position: relative;
+    overflow: hidden;
+  }
+  .go-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(212, 255, 0, 0.12),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: slideRight 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  /* Chevron/speed pattern — use as a small decorative badge */
+  .speed-chip {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5
+           text-[10px] font-bold uppercase tracking-brutal
+           bg-volt-400/10 text-volt-400 ring-1 ring-volt-400/30;
+  }
+}
