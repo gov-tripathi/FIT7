@@ -137,7 +137,7 @@ create table if not exists public.food_logs (
   id              uuid primary key default uuid_generate_v4(),
   user_id         uuid not null references auth.users(id) on delete cascade,
   logged_at       timestamptz not null default now(),
-  date            date not null generated always as (logged_at::date) stored,
+  date            date not null default current_date,
   meal_type       text not null check (meal_type in (
                     'breakfast', 'lunch', 'dinner', 'snack',
                     'pre_workout', 'post_workout'
@@ -417,6 +417,22 @@ $$;
 create or replace trigger profiles_updated_at
   before update on public.profiles
   for each row execute procedure public.set_updated_at();
+
+
+-- Set food_logs.date from logged_at before insert/update
+create or replace function public.set_food_log_date()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.date = (new.logged_at at time zone 'UTC')::date;
+  return new;
+end;
+$$;
+
+create or replace trigger food_logs_set_date
+  before insert or update on public.food_logs
+  for each row execute procedure public.set_food_log_date();
 
 
 -- ────────────────────────────────────────────────────────────
