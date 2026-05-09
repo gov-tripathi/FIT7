@@ -378,11 +378,25 @@ def _pull_real_data(
                 "resting_hr": stats.get("restingHeartRate"),
                 "stress_level": stats.get("averageStressLevel"),
                 "body_battery": stats.get("bodyBatteryMostRecentValue"),
-                "vo2_max": stats.get("vO2MaxValue"),
+                "vo2_max": stats.get("vO2MaxValue"),  # backfilled below
                 "steps": stats.get("totalSteps"),
-                "active_mins": stats.get("activeTimeMinutes"),
+                # activeTimeMinutes doesn't exist; real field is activeSeconds
+                "active_mins": round((stats.get("activeSeconds") or 0) / 60) or None,
             }
         )
+
+    # Garmin's daily stats endpoint never returns vO2MaxValue for many devices.
+    # Backfill from the same-day activity that has it (e.g. running activities
+    # compute VO2 max and store it on the activity record).
+    act_vo2_by_date: dict[str, float] = {}
+    for a in activities:
+        v = a.get("vo2_max")
+        if v and a.get("date"):
+            act_vo2_by_date[a["date"]] = float(v)
+
+    for m in metrics:
+        if m["vo2_max"] is None and m["date"] in act_vo2_by_date:
+            m["vo2_max"] = act_vo2_by_date[m["date"]]
 
     logger.info(
         "Garmin real sync: %d activities, %d metric days for user=%s",

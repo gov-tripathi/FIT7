@@ -265,11 +265,21 @@ class GarminWebClient:
                     "resting_hr": stats.get("restingHeartRate"),
                     "stress_level": stats.get("averageStressLevel"),
                     "body_battery": stats.get("bodyBatteryMostRecentValue"),
-                    "vo2_max": stats.get("vO2MaxValue"),
+                    "vo2_max": stats.get("vO2MaxValue"),  # backfilled below
                     "steps": stats.get("totalSteps"),
-                    "active_mins": stats.get("activeTimeMinutes"),
+                    "active_mins": round((stats.get("activeSeconds") or 0) / 60) or None,
                 }
             )
+
+        # Backfill vo2_max from same-day activities when stats endpoint omits it.
+        act_vo2_by_date: dict[str, float] = {}
+        for a in activities:
+            v = a.get("vo2_max")
+            if v and a.get("date"):
+                act_vo2_by_date[a["date"]] = float(v)
+        for m in metrics:
+            if m["vo2_max"] is None and m["date"] in act_vo2_by_date:
+                m["vo2_max"] = act_vo2_by_date[m["date"]]
 
         logger.info(
             "Garmin cookie sync: %d activities, %d metric days for user=%s",
