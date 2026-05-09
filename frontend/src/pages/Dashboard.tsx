@@ -97,7 +97,11 @@ export default function Dashboard() {
   const burnSeries = [...activities]
     .slice(0, 12)
     .reverse()
-    .map((a) => ({ date: a.date.slice(5), kcal: a.calories_burned ?? 0 }));
+    .map((a) => ({
+      date: a.date.slice(5),
+      kcal: a.calories_burned ?? 0,
+      name: a.name ?? a.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    }));
 
   const stressBatterySeries = last14Metrics.map((m) => ({
     date: m.date.slice(5),
@@ -333,6 +337,12 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* HRV Status + Training Readiness */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+        <HrvStatusCard metric={latestMetric ?? null} />
+        <TrainingReadinessCard metric={latestMetric ?? null} />
+      </div>
+
       <div className="grid lg:grid-cols-2 gap-3 sm:gap-4">
         <div className="card">
           <div className="flex items-center justify-between mb-3 sm:mb-4 gap-2">
@@ -352,7 +362,7 @@ export default function Dashboard() {
               <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
               <YAxis stroke="#64748b" fontSize={12} />
-              <Tooltip contentStyle={CHART_TOOLTIP} />
+              <Tooltip content={<BurnTooltip />} />
               <Area
                 type="monotone"
                 dataKey="kcal"
@@ -571,8 +581,180 @@ function formatActivityDate(iso: string) {
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days} days ago`;
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function BurnTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { date: string; kcal: number; name: string } }> }) {
+  if (!active || !payload?.length) return null;
+  const { date, kcal, name } = payload[0].payload;
+  return (
+    <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: "10px 14px" }}>
+      <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>{date}</div>
+      <div style={{ color: "#f1f5f9", fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{name}</div>
+      <div style={{ color: "#ff6b35", fontSize: 13 }}>{kcal} kcal</div>
+    </div>
+  );
+}
+
+// ── HRV status colours ────────────────────────────────────────
+const HRV_COLOR: Record<string, string> = {
+  BALANCED: "text-emerald-400",
+  UNBALANCED: "text-amber-400",
+  LOW: "text-rose-400",
+  POOR: "text-rose-500",
+};
+const HRV_BG: Record<string, string> = {
+  BALANCED: "bg-emerald-400/10 ring-emerald-400/30",
+  UNBALANCED: "bg-amber-400/10 ring-amber-400/30",
+  LOW: "bg-rose-400/10 ring-rose-400/30",
+  POOR: "bg-rose-500/10 ring-rose-500/30",
+};
+
+function HrvStatusCard({ metric }: { metric: import("../types").HealthMetric | null }) {
+  const status = metric?.hrv_status ?? null;
+  const hrv = metric?.hrv ?? null;
+  const weekly = metric?.hrv_weekly_avg ?? null;
+  const low = metric?.hrv_baseline_low ?? null;
+  const high = metric?.hrv_baseline_high ?? null;
+
+  const colorText = status ? (HRV_COLOR[status] ?? "text-slate-300") : "text-slate-500";
+  const colorBg = status ? (HRV_BG[status] ?? "bg-slate-700/40 ring-slate-600/50") : "bg-slate-700/40 ring-slate-600/50";
+  const label = status
+    ? status.charAt(0) + status.slice(1).toLowerCase()
+    : "No data";
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">HRV Status</div>
+          <div className="flex items-center gap-2">
+            <span className={`text-3xl font-bold tabular-nums ${hrv ? "text-slate-50" : "text-slate-600"}`}>
+              {hrv ?? "—"}
+            </span>
+            {hrv && <span className="text-sm text-slate-400">ms</span>}
+          </div>
+        </div>
+        {status && (
+          <span className={`pill ring-1 text-sm font-medium ${colorBg} ${colorText}`}>
+            {label}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <div className="rounded-lg bg-slate-800/60 p-3">
+          <div className="text-[11px] text-slate-500 uppercase tracking-wide">Last night</div>
+          <div className={`text-xl font-semibold mt-1 ${colorText}`}>{hrv ?? "—"}</div>
+        </div>
+        <div className="rounded-lg bg-slate-800/60 p-3">
+          <div className="text-[11px] text-slate-500 uppercase tracking-wide">7d avg</div>
+          <div className="text-xl font-semibold mt-1 text-slate-200">{weekly ?? "—"}</div>
+        </div>
+        <div className="rounded-lg bg-slate-800/60 p-3">
+          <div className="text-[11px] text-slate-500 uppercase tracking-wide">Baseline</div>
+          <div className="text-sm font-semibold mt-1 text-slate-300">
+            {low && high ? `${low}–${high}` : "—"}
+          </div>
+        </div>
+      </div>
+
+      {!hrv && (
+        <p className="text-xs text-slate-500">
+          HRV data appears after your first night of sleep with your Garmin.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Training Readiness colours ────────────────────────────────
+const TR_COLOR: Record<string, string> = {
+  HIGH: "text-emerald-400",
+  MODERATE: "text-amber-400",
+  LOW: "text-rose-400",
+};
+const TR_FEEDBACK_LABEL: Record<string, string> = {
+  FOCUS_ON_SLEEP_QUALITY: "Focus on sleep quality",
+  RECOVERY_NEEDED: "Recovery needed",
+  TRAINING_LOAD_TOO_HIGH: "Reduce training load",
+  READY_TO_TRAIN: "Ready to train hard",
+  MAINTAIN_TRAINING_LOAD: "Maintain current load",
+};
+
+function TrainingReadinessCard({ metric }: { metric: import("../types").HealthMetric | null }) {
+  const score = metric?.training_readiness_score ?? null;
+  const level = metric?.training_readiness_level ?? null;
+  const feedback = metric?.training_readiness_feedback ?? null;
+
+  const colorText = level ? (TR_COLOR[level] ?? "text-slate-300") : "text-slate-500";
+  const pct = score ?? 0;
+  const feedbackLabel = feedback
+    ? (TR_FEEDBACK_LABEL[feedback] ?? feedback.replace(/_/g, " ").toLowerCase())
+    : null;
+
+  // Arc SVG: 180° semicircle gauge
+  const radius = 54;
+  const circumference = Math.PI * radius; // half-circle
+  const dashOffset = circumference * (1 - pct / 100);
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">Training Readiness</div>
+          {level && (
+            <div className={`text-sm font-semibold ${colorText}`}>
+              {level.charAt(0) + level.slice(1).toLowerCase()}
+            </div>
+          )}
+        </div>
+        {feedbackLabel && (
+          <span className="text-xs text-slate-400 text-right max-w-[160px]">{feedbackLabel}</span>
+        )}
+      </div>
+
+      {/* Gauge */}
+      <div className="flex flex-col items-center gap-1">
+        <svg width="140" height="78" viewBox="0 0 140 78">
+          {/* Track */}
+          <path
+            d="M 14 70 A 56 56 0 0 1 126 70"
+            fill="none"
+            stroke="#1e293b"
+            strokeWidth="12"
+            strokeLinecap="round"
+          />
+          {/* Fill */}
+          <path
+            d="M 14 70 A 56 56 0 0 1 126 70"
+            fill="none"
+            stroke={score == null ? "#334155" : pct >= 75 ? "#34d399" : pct >= 50 ? "#fbbf24" : "#f87171"}
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={score == null ? circumference : dashOffset}
+            style={{ transition: "stroke-dashoffset 0.6s ease" }}
+          />
+          <text x="70" y="66" textAnchor="middle" fill="#f1f5f9" fontSize="26" fontWeight="700">
+            {score ?? "—"}
+          </text>
+          <text x="70" y="76" textAnchor="middle" fill="#64748b" fontSize="10">
+            {score != null ? "/ 100" : "no data"}
+          </text>
+        </svg>
+        <div className="grid grid-cols-3 w-full gap-2 text-center text-[11px] text-slate-500 mt-1">
+          <span>0 Low</span>
+          <span className="text-slate-400">Moderate</span>
+          <span className="text-right">100 Peak</span>
+        </div>
+      </div>
+
+      {!score && (
+        <p className="text-xs text-slate-500">
+          Training Readiness appears after sleep and activity data are synced.
+        </p>
+      )}
+    </div>
+  );
 }

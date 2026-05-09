@@ -221,7 +221,8 @@ class GarminWebClient:
             d = start + timedelta(days=i)
             stats: dict[str, Any] = {}
             sleep_data: dict[str, Any] = {}
-            hrv_val = None
+            hrv_val = hrv_status = hrv_weekly_avg = hrv_baseline_low = hrv_baseline_high = None
+            tr_score = tr_level = tr_feedback = None
             try:
                 stats = self.daily_stats(d)
             except GarminAuthExpired:
@@ -236,7 +237,12 @@ class GarminWebClient:
                 pass
             try:
                 hrv_raw = self.hrv(d) or {}
-                hrv_val = (hrv_raw.get("hrvSummary") or {}).get("lastNightAvg")
+                hrv_summary = hrv_raw.get("hrvSummary") or {}
+                hrv_val = hrv_summary.get("lastNightAvg")
+                hrv_status = hrv_summary.get("status")
+                hrv_weekly_avg = hrv_summary.get("weeklyAvg")
+                hrv_baseline_low = (hrv_summary.get("baseline") or {}).get("balancedLow")
+                hrv_baseline_high = (hrv_summary.get("baseline") or {}).get("balancedUpper")
             except GarminAuthExpired:
                 raise
             except Exception:
@@ -262,12 +268,19 @@ class GarminWebClient:
                         (sleep_data.get("remSleepSeconds") or 0) / 3600, 1
                     ),
                     "hrv": hrv_val,
+                    "hrv_status": hrv_status,
+                    "hrv_weekly_avg": hrv_weekly_avg,
+                    "hrv_baseline_low": hrv_baseline_low,
+                    "hrv_baseline_high": hrv_baseline_high,
                     "resting_hr": stats.get("restingHeartRate"),
                     "stress_level": stats.get("averageStressLevel"),
                     "body_battery": stats.get("bodyBatteryMostRecentValue"),
                     "vo2_max": stats.get("vO2MaxValue"),  # backfilled below
                     "steps": stats.get("totalSteps"),
                     "active_mins": round((stats.get("activeSeconds") or 0) / 60) or None,
+                    "training_readiness_score": tr_score,
+                    "training_readiness_level": tr_level,
+                    "training_readiness_feedback": tr_feedback,
                 }
             )
 

@@ -78,10 +78,17 @@ create table if not exists public.health_metrics (
   rem_sleep_hrs   float,
   -- Heart
   hrv             int,                            -- Heart Rate Variability (ms)
+  hrv_status      text,                           -- BALANCED / UNBALANCED / LOW / POOR
+  hrv_weekly_avg  int,                            -- 7-day rolling average HRV
+  hrv_baseline_low  int,                          -- lower bound of personal baseline
+  hrv_baseline_high int,                          -- upper bound of personal baseline
   resting_hr      int,                            -- Resting heart rate (bpm)
   -- Readiness
   stress_level    int,                            -- Garmin stress 0–100
   body_battery    int,                            -- Garmin body battery 0–100
+  training_readiness_score  int,                  -- 0–100 readiness score
+  training_readiness_level  text,                 -- LOW / MODERATE / HIGH
+  training_readiness_feedback text,               -- Garmin feedback key
   -- Fitness
   vo2_max         float,
   steps           int,

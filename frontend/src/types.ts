@@ -29,12 +29,19 @@ export interface HealthMetric {
   sleep_hours?: number;
   sleep_score?: number;
   hrv?: number;
+  hrv_status?: string;
+  hrv_weekly_avg?: number;
+  hrv_baseline_low?: number;
+  hrv_baseline_high?: number;
   resting_hr?: number;
   stress_level?: number;
   body_battery?: number;
   vo2_max?: number;
   steps?: number;
   active_mins?: number;
+  training_readiness_score?: number;
+  training_readiness_level?: string;
+  training_readiness_feedback?: string;
 }
 
 export interface FoodLog {

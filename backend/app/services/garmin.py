@@ -360,9 +360,26 @@ def _pull_real_data(
             sleep = {}
         try:
             hrv_data = client.get_hrv_data(d) or {}
-            hrv = (hrv_data.get("hrvSummary") or {}).get("lastNightAvg")
+            hrv_summary = hrv_data.get("hrvSummary") or {}
+            hrv = hrv_summary.get("lastNightAvg")
+            hrv_status = hrv_summary.get("status")
+            hrv_weekly_avg = hrv_summary.get("weeklyAvg")
+            hrv_baseline_low = (hrv_summary.get("baseline") or {}).get("balancedLow")
+            hrv_baseline_high = (hrv_summary.get("baseline") or {}).get("balancedUpper")
         except Exception:
-            hrv = None
+            hrv = hrv_status = hrv_weekly_avg = hrv_baseline_low = hrv_baseline_high = None
+        try:
+            tr_list = client.get_training_readiness(d) or []
+            # Take the most recent reading (last timestamp after wakeup reset)
+            tr = next(
+                (t for t in tr_list if t.get("inputContext") == "AFTER_WAKEUP_RESET"),
+                tr_list[0] if tr_list else {},
+            )
+            tr_score = tr.get("score")
+            tr_level = tr.get("level")
+            tr_feedback = tr.get("feedbackShort")
+        except Exception:
+            tr_score = tr_level = tr_feedback = None
 
         metrics.append(
             {
@@ -375,13 +392,19 @@ def _pull_real_data(
                 "deep_sleep_hrs": round((sleep.get("deepSleepSeconds") or 0) / 3600, 1),
                 "rem_sleep_hrs": round((sleep.get("remSleepSeconds") or 0) / 3600, 1),
                 "hrv": hrv,
+                "hrv_status": hrv_status,
+                "hrv_weekly_avg": hrv_weekly_avg,
+                "hrv_baseline_low": hrv_baseline_low,
+                "hrv_baseline_high": hrv_baseline_high,
                 "resting_hr": stats.get("restingHeartRate"),
                 "stress_level": stats.get("averageStressLevel"),
                 "body_battery": stats.get("bodyBatteryMostRecentValue"),
                 "vo2_max": stats.get("vO2MaxValue"),  # backfilled below
                 "steps": stats.get("totalSteps"),
-                # activeTimeMinutes doesn't exist; real field is activeSeconds
                 "active_mins": round((stats.get("activeSeconds") or 0) / 60) or None,
+                "training_readiness_score": tr_score,
+                "training_readiness_level": tr_level,
+                "training_readiness_feedback": tr_feedback,
             }
         )
 
