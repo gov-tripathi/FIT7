@@ -84,15 +84,18 @@ def _close_popup(success: bool, message: str) -> HTMLResponse:
 
 @router.get("/status")
 def strava_status(user: CurrentUser = Depends(get_current_user), db=Depends(get_db)):
-    prof = (
-        db.table("profiles")
-        .select("strava_connected,strava_athlete_id,strava_expires_at")
-        .eq("id", user.id)
-        .single()
-        .execute()
-        .data
-        or {}
-    )
+    try:
+        prof = (
+            db.table("profiles")
+            .select("strava_connected,strava_athlete_id,strava_expires_at")
+            .eq("id", user.id)
+            .single()
+            .execute()
+            .data
+            or {}
+        )
+    except Exception:
+        prof = {}
     connected = bool(prof.get("strava_connected"))
     expires_at = prof.get("strava_expires_at") or 0
     token_valid = connected and int(time.time()) < int(expires_at)
