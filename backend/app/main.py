@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import activities, ai, food, health, nutrition, orders, planner, profile, sync
+from .routers import activities, ai, food, health, nutrition, orders, planner, profile, strava, sync
 from .scheduler import start as start_scheduler
 
 
@@ -51,3 +51,4 @@ app.include_router(nutrition.router)
 app.include_router(ai.router)
 app.include_router(planner.router)
 app.include_router(orders.router)
+app.include_router(strava.router)

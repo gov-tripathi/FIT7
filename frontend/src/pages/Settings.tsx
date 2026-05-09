@@ -17,6 +17,8 @@ export default function Settings() {
   const [garminConnected, setGarminConnected] = useState(false);
   const [garminConnecting, setGarminConnecting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [stravaConnected, setStravaConnected] = useState(false);
+  const [stravaConnecting, setStravaConnecting] = useState(false);
 
   const load = () => http.get<Profile>("/profile").then(setP).catch(() => {});
   const loadSession = () =>
@@ -24,10 +26,16 @@ export default function Settings() {
       .get<{ has_garth_session: boolean; has_browser_session: boolean }>("/profile/garmin/status")
       .then((r) => setGarminConnected(!!(r.has_garth_session || r.has_browser_session)))
       .catch(() => {});
+  const loadStravaStatus = () =>
+    http
+      .get<{ connected: boolean }>("/strava/status")
+      .then((r) => setStravaConnected(r.connected))
+      .catch(() => {});
 
   useEffect(() => {
     load();
     loadSession();
+    loadStravaStatus();
   }, []);
 
   const connectGarmin = async () => {
@@ -81,6 +89,52 @@ export default function Settings() {
       } else {
         toast(res?.message ?? "Nothing new to import");
       }
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const connectStrava = async () => {
+    setStravaConnecting(true);
+    try {
+      const { url } = await http.get<{ url: string }>("/strava/connect");
+      const popup = window.open(url, "strava-auth", "width=600,height=700,left=200,top=100");
+      const handleConnected = async () => {
+        setStravaConnected(true);
+        toast.success("Strava connected!");
+        popup?.close();
+        window.removeEventListener("strava:connected", handleConnected as EventListener);
+      };
+      window.addEventListener("strava:connected", handleConnected as EventListener);
+      // Poll in case postMessage doesn't fire
+      const poll = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(poll);
+          loadStravaStatus();
+          window.removeEventListener("strava:connected", handleConnected as EventListener);
+        }
+      }, 500);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setStravaConnecting(false);
+    }
+  };
+
+  const disconnectStrava = async () => {
+    try {
+      await http.del("/strava/disconnect");
+      setStravaConnected(false);
+      toast.success("Strava disconnected");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const syncStrava = async () => {
+    try {
+      const res = await http.post<{ activities_new: number }>("/strava/sync", {});
+      toast.success(`Synced ${res.activities_new} activities from Strava`);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -280,6 +334,47 @@ export default function Settings() {
             <button
               type="button"
               onClick={disconnectGarmin}
+              className="px-4 py-2 rounded-lg ring-1 ring-rose-800/50 text-rose-400 hover:bg-rose-900/20 text-sm"
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Strava ── */}
+      <div className="card space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-semibold">Strava</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-lg">
+              Connect your Strava account to sync running, cycling, and other activities.
+              OAuth — your password is never shared.
+            </p>
+          </div>
+          {stravaConnected ? (
+            <span className="pill bg-orange-400/10 text-orange-300 ring-orange-400/30">Connected</span>
+          ) : (
+            <span className="pill bg-slate-700/40 text-slate-400 ring-slate-600/50">Not connected</span>
+          )}
+        </div>
+
+        {!stravaConnected ? (
+          <button className="btn-primary" onClick={connectStrava} disabled={stravaConnecting}>
+            {stravaConnecting ? "Connecting…" : "Connect Strava"}
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={syncStrava}
+              className="px-4 py-2 rounded-lg ring-1 ring-slate-700 text-slate-200 hover:bg-slate-800 text-sm"
+            >
+              Sync now
+            </button>
+            <button
+              type="button"
+              onClick={disconnectStrava}
               className="px-4 py-2 rounded-lg ring-1 ring-rose-800/50 text-rose-400 hover:bg-rose-900/20 text-sm"
             >
               Disconnect

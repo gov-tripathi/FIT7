@@ -20,6 +20,7 @@ const icons: Record<string, typeof ActivityIcon> = {
 
 export default function Activities() {
   const [items, setItems] = useState<Activity[]>([]);
+  const [source, setSource] = useState<"all" | "garmin" | "strava">("all");
 
   useEffect(() => {
     const load = () =>
@@ -29,6 +30,8 @@ export default function Activities() {
     window.addEventListener("fitfuel:synced", h);
     return () => window.removeEventListener("fitfuel:synced", h);
   }, []);
+
+  const filtered = source === "all" ? items : items.filter((a) => a.source === source);
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -47,14 +50,34 @@ export default function Activities() {
 
       <WorkoutFileUpload />
 
-      {items.length === 0 ? (
+      {/* Source filter */}
+      <div className="flex items-center gap-2">
+        {(["all", "garmin", "strava"] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => setSource(s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              source === s
+                ? s === "strava"
+                  ? "bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/40"
+                  : "bg-brand-500/20 text-brand-300 ring-1 ring-brand-500/40"
+                : "bg-slate-800/60 text-slate-400 hover:text-slate-200 ring-1 ring-slate-700"
+            }`}
+          >
+            {s === "all" ? "All sources" : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
         <div className="card text-center py-16 text-slate-400">
-          No activities yet. Drop a workout file above, or tap{" "}
-          <span className="text-brand-400">Sync Garmin</span> in the top bar.
+          {source !== "all"
+            ? `No ${source} activities found. Connect ${source.charAt(0).toUpperCase() + source.slice(1)} in Settings.`
+            : "No activities yet. Drop a workout file above, or tap Sync Garmin in the top bar."}
         </div>
       ) : (
         <div className="card divide-y divide-slate-800">
-          {items.map((a) => {
+          {filtered.map((a) => {
             const Icon = icons[a.type] ?? ActivityIcon;
             return (
               <div
@@ -72,6 +95,9 @@ export default function Activities() {
                     <span className="pill bg-slate-800/80 text-slate-300 ring-slate-700">
                       {a.type.replace("_", " ")}
                     </span>
+                    {a.source === "strava" && (
+                      <span className="pill bg-orange-500/10 text-orange-300 ring-orange-500/30 text-[10px]">Strava</span>
+                    )}
                   </div>
                   <div className="text-xs text-slate-500 mt-1">{a.date}</div>
                   {/* Mobile: inline stats row */}

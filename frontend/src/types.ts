@@ -16,6 +16,7 @@ export interface Activity {
   started_at?: string;
   type: string;
   name?: string;
+  source?: string;       // "garmin" | "strava"
   distance_km?: number;
   duration_mins?: number;
   calories_burned?: number;

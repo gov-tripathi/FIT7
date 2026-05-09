@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [metrics, setMetrics] = useState<HealthMetric[]>([]);
   const [nutrition, setNutrition] = useState<NutritionSummary | null>(null);
+  const [actSource, setActSource] = useState<"all" | "garmin" | "strava">("all");
 
   const load = useCallback(() => {
     http
@@ -94,7 +95,7 @@ export default function Dashboard() {
     hours: m.sleep_hours ?? 0,
   }));
 
-  const burnSeries = [...activities]
+  const burnSeries = [...(actSource === "all" ? activities : activities.filter((a) => a.source === actSource))]
     .slice(0, 12)
     .reverse()
     .map((a) => ({
@@ -350,6 +351,23 @@ export default function Dashboard() {
               Calories burned per activity (last 12)
             </h3>
             <TrendingUp className="h-4 w-4 text-slate-500 shrink-0" />
+          </div>
+          <div className="flex items-center gap-1.5 mb-3">
+            {(["all", "garmin", "strava"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setActSource(s)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  actSource === s
+                    ? s === "strava"
+                      ? "bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/40"
+                      : "bg-brand-500/20 text-brand-300 ring-1 ring-brand-500/40"
+                    : "bg-slate-800/60 text-slate-400 hover:text-slate-200 ring-1 ring-slate-700"
+                }`}
+              >
+                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={burnSeries}>

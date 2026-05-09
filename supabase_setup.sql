@@ -33,10 +33,16 @@ create table if not exists public.profiles (
   garmin_email    text,
   garmin_token    text,   -- store encrypted session token, NOT raw password
   garmin_enabled  boolean default false,
+  -- Strava OAuth tokens (encrypted)
+  strava_access_token  text,
+  strava_refresh_token text,
+  strava_expires_at    bigint,
+  strava_athlete_id    bigint,
+  strava_connected     boolean default false,
   created_at      timestamptz default now(),
   updated_at      timestamptz default now()
 );
-comment on table public.profiles is 'User profile and Garmin connection settings';
+comment on table public.profiles is 'User profile and Garmin/Strava connection settings';
 
 
 -- 2. activities
@@ -60,6 +66,9 @@ create table if not exists public.activities (
   training_effect float,
   gpx_data        jsonb,                          -- [{lat, lng, ele, time}, ...]
   raw_data        jsonb,                          -- full Garmin response for future use
+  -- Source tracking
+  source          text default 'garmin',          -- 'garmin' | 'strava' | 'manual'
+  strava_id       bigint,                         -- Strava's activity ID (prevents duplicates)
   created_at      timestamptz default now()
 );
 comment on table public.activities is 'Garmin activity records synced from Connect';
@@ -262,6 +271,7 @@ comment on table public.orders is 'MCP e-commerce orders placed from supplement 
 -- activities
 create index if not exists idx_activities_user_date    on public.activities(user_id, date desc);
 create index if not exists idx_activities_garmin_id    on public.activities(garmin_id);
+create unique index if not exists idx_activities_strava_id on public.activities(strava_id) where strava_id is not null;
 create index if not exists idx_activities_type         on public.activities(user_id, type);
 
 -- health_metrics
