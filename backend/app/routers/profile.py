@@ -144,10 +144,46 @@ def import_garmin_profile(
     return {"imported": imported}
 
 
+@router.post("/garmin/connect")
+def garmin_direct_connect(
+    creds: GarminCreds,
+    user: CurrentUser = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Connect Garmin via direct HTTP login — no browser needed.
+
+    Uses garth's OAuth flow (same as the Garmin mobile app). Saves tokens
+    to disk so subsequent syncs work without re-entering credentials.
+    Password is NOT stored in the database.
+    """
+    try:
+        result = garmin_service.direct_login(user.id, creds.email, creds.password)
+    except garmin_service.GarminSyncError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    db.table("profiles").update({
+        "garmin_email": creds.email,
+        "garmin_enabled": True,
+    }).eq("id", user.id).execute()
+
+    imported: dict = {}
+    try:
+        imported = _merge_garmin_profile(db, user.id, None, None)
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "display_name": result.get("display_name"),
+        "imported": imported,
+    }
+
+
 @router.get("/garmin/status")
 def garmin_session_status(user: CurrentUser = Depends(get_current_user)):
-    """Report whether a browser-captured Garmin session exists for this user."""
+    """Report Garmin connection status (garth tokens + browser session)."""
     return {
+        "has_garth_session": garmin_service.has_garth_session(user.id),
         "has_browser_session": garmin_browser.has_valid_session(user.id),
     }
 
@@ -197,3 +233,12 @@ async def garmin_browser_login(
 def garmin_clear_browser_session(user: CurrentUser = Depends(get_current_user)):
     removed = garmin_browser.clear_session(user.id)
     return {"removed": removed}
+
+
+@router.delete("/garmin/browser-profile")
+def garmin_clear_browser_profile(user: CurrentUser = Depends(get_current_user)):
+    """Delete the cached Chromium profile. Use this when Garmin shows
+    'unexpected error' — a fresh profile bypasses bot-detection bans."""
+    session_removed = garmin_browser.clear_session(user.id)
+    profile_removed = garmin_browser.clear_chromium_profile(user.id)
+    return {"session_removed": session_removed, "profile_removed": profile_removed}

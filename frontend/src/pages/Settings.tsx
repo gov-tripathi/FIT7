@@ -14,14 +14,15 @@ const GOALS: Profile["goal"][] = [
 export default function Settings() {
   const [p, setP] = useState<Profile | null>(null);
   const [garmin, setGarmin] = useState({ email: "", password: "" });
-  const [browserSession, setBrowserSession] = useState(false);
-  const [browserConnecting, setBrowserConnecting] = useState(false);
+  const [garminConnected, setGarminConnected] = useState(false);
+  const [garminConnecting, setGarminConnecting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const load = () => http.get<Profile>("/profile").then(setP).catch(() => {});
   const loadSession = () =>
     http
-      .get<{ has_browser_session: boolean }>("/profile/garmin/status")
-      .then((r) => setBrowserSession(!!r.has_browser_session))
+      .get<{ has_garth_session: boolean; has_browser_session: boolean }>("/profile/garmin/status")
+      .then((r) => setGarminConnected(!!(r.has_garth_session || r.has_browser_session)))
       .catch(() => {});
 
   useEffect(() => {
@@ -29,44 +30,57 @@ export default function Settings() {
     loadSession();
   }, []);
 
-  const connectGarminBrowser = async () => {
-    setBrowserConnecting(true);
-    const notice = toast.loading(
-      "A Chromium window is opening — sign into Garmin there, including any captcha. Come back once you see your dashboard.",
-      { duration: 1000 * 60 * 4 }
-    );
+  const connectGarmin = async () => {
+    if (!garmin.email || !garmin.password)
+      return toast.error("Email and password required");
+    setGarminConnecting(true);
     try {
       const res = await http.post<{
         ok: boolean;
-        duration_s?: number;
+        display_name?: string;
         imported?: Record<string, unknown>;
-      }>("/profile/garmin/browser-login", {});
-      toast.dismiss(notice);
+      }>("/profile/garmin/connect", garmin);
       const fields = Object.keys(res?.imported ?? {});
       toast.success(
         fields.length
           ? `Garmin connected — imported ${fields.join(", ")}`
-          : "Garmin connected — you can now Sync from the top bar"
+          : `Garmin connected${res.display_name ? ` as ${res.display_name}` : ""}`
       );
+      setGarmin({ email: "", password: "" });
       await loadSession();
       await load();
     } catch (e) {
-      toast.dismiss(notice);
-      const msg = (e as Error).message;
-      toast.error(
-        msg.length > 220 ? msg.slice(0, 220) + "…" : msg,
-        { duration: 8000 }
-      );
+      toast.error((e as Error).message, { duration: 8000 });
     } finally {
-      setBrowserConnecting(false);
+      setGarminConnecting(false);
     }
   };
 
-  const disconnectBrowser = async () => {
+  const disconnectGarmin = async () => {
     try {
+      await http.del("/profile/garmin/browser-profile");
       await http.del("/profile/garmin/browser-session");
-      toast.success("Garmin browser session removed");
-      await loadSession();
+      setGarminConnected(false);
+      toast.success("Garmin disconnected");
+      await load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const importFromGarmin = async () => {
+    try {
+      const res = await http.post<{
+        imported?: Record<string, unknown>;
+        message?: string;
+      }>("/profile/garmin/import", {});
+      const fields = Object.keys(res?.imported ?? {});
+      if (fields.length) {
+        toast.success(`Imported from Garmin: ${fields.join(", ")}`);
+        load();
+      } else {
+        toast(res?.message ?? "Nothing new to import");
+      }
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -89,49 +103,6 @@ export default function Settings() {
     }
   };
 
-  const connectGarmin = async () => {
-    if (!garmin.email || !garmin.password)
-      return toast.error("Email and password required");
-    try {
-      const res = await http.post<{
-        ok: boolean;
-        imported?: Record<string, unknown>;
-        import_error?: string | null;
-      }>("/profile/garmin", garmin);
-      const fields = Object.keys(res?.imported ?? {});
-      if (fields.length) {
-        toast.success(`Garmin connected — imported ${fields.join(", ")}`);
-      } else if (res?.import_error) {
-        toast.success("Garmin connected");
-        toast.error(`Profile import: ${res.import_error}`);
-      } else {
-        toast.success("Garmin connected");
-      }
-      setGarmin({ email: "", password: "" });
-      load();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
-
-  const importFromGarmin = async () => {
-    try {
-      const res = await http.post<{
-        imported?: Record<string, unknown>;
-        message?: string;
-      }>("/profile/garmin/import", {});
-      const fields = Object.keys(res?.imported ?? {});
-      if (fields.length) {
-        toast.success(`Imported from Garmin: ${fields.join(", ")}`);
-        load();
-      } else {
-        toast(res?.message ?? "Nothing to import");
-      }
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
-
   if (!p) return <div className="text-slate-500">Loading…</div>;
 
   return (
@@ -149,6 +120,7 @@ export default function Settings() {
         </p>
       </div>
 
+      {/* ── Profile ── */}
       <div className="card space-y-4">
         <h3 className="font-semibold">Profile</h3>
         <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
@@ -220,7 +192,7 @@ export default function Settings() {
           <button className="btn-primary" onClick={save}>
             Save profile
           </button>
-          {p.garmin_enabled && (
+          {garminConnected && (
             <button
               type="button"
               onClick={importFromGarmin}
@@ -229,33 +201,23 @@ export default function Settings() {
               Import from Garmin
             </button>
           )}
-          {p.garmin_enabled && (
-            <span className="text-xs text-slate-500">
-              Pulls name, height, weight, birth year, and sex from your Garmin
-              account.
-            </span>
-          )}
         </div>
       </div>
 
+      {/* ── Garmin Connect ── */}
       <div className="card space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h3 className="font-semibold">Garmin Connect</h3>
             <p className="text-xs text-slate-500 mt-1 max-w-lg">
-              Recommended: connect via browser login. We open a local Chromium
-              window where you sign in (and solve Garmin's captcha) once. We
-              store the session cookies on your machine and reuse them for
-              every future sync — no passwords, captcha-proof.
+              Enter your Garmin Connect email and password once. We authenticate
+              directly with Garmin's API (same as the mobile app) and store only
+              a secure OAuth token — your password is never saved.
             </p>
           </div>
-          {browserSession ? (
+          {garminConnected ? (
             <span className="pill bg-emerald-400/10 text-emerald-300 ring-emerald-400/30">
-              Browser session active
-            </span>
-          ) : p.garmin_enabled ? (
-            <span className="pill bg-amber-400/10 text-amber-300 ring-amber-400/30">
-              Password-only (may fail)
+              Connected
             </span>
           ) : (
             <span className="pill bg-slate-700/40 text-slate-400 ring-slate-600/50">
@@ -264,78 +226,66 @@ export default function Settings() {
           )}
         </div>
 
-        <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
-          <div className="text-sm font-medium text-cyan-200">
-            {browserSession
-              ? "Garmin is connected via browser session"
-              : "Connect Garmin (browser login — captcha-proof)"}
-          </div>
-          <ol className="text-xs text-slate-400 space-y-1 list-decimal list-inside">
-            <li>Click the button below — a Chromium window will open.</li>
-            <li>Sign in to Garmin Connect there (email, password, captcha, MFA if any).</li>
-            <li>Wait until you see your Garmin dashboard, then come back here.</li>
-          </ol>
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={connectGarminBrowser}
-              disabled={browserConnecting}
-              className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {browserConnecting
-                ? "Waiting for login…"
-                : browserSession
-                ? "Re-connect Garmin"
-                : "Connect Garmin (browser)"}
-            </button>
-            {browserSession && (
-              <button
-                type="button"
-                onClick={disconnectBrowser}
-                className="px-4 py-2 rounded-lg ring-1 ring-slate-700 text-slate-300 hover:bg-slate-800 text-sm"
-              >
-                Disconnect session
-              </button>
-            )}
-          </div>
-        </div>
-
-        <details className="group">
-          <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-300 select-none">
-            Advanced: save password instead (fragile — fails if Garmin shows captcha)
-          </summary>
-          <div className="mt-3 space-y-3">
-            <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+        {!garminConnected ? (
+          <div className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Garmin email</label>
                 <input
                   className="input"
+                  type="email"
+                  placeholder="you@example.com"
                   value={garmin.email}
-                  onChange={(e) =>
-                    setGarmin({ ...garmin, email: e.target.value })
-                  }
+                  onChange={(e) => setGarmin({ ...garmin, email: e.target.value })}
                 />
               </div>
               <div>
                 <label className="label">Garmin password</label>
-                <input
-                  type="password"
-                  className="input"
-                  value={garmin.password}
-                  onChange={(e) =>
-                    setGarmin({ ...garmin, password: e.target.value })
-                  }
-                />
+                <div className="relative">
+                  <input
+                    className="input pr-16"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={garmin.password}
+                    onChange={(e) => setGarmin({ ...garmin, password: e.target.value })}
+                    onKeyDown={(e) => e.key === "Enter" && connectGarmin()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-200"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
               </div>
             </div>
             <button
-              type="button"
+              className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
               onClick={connectGarmin}
-              className="px-4 py-2 rounded-lg ring-1 ring-slate-700 text-slate-200 hover:bg-slate-800 text-sm"
+              disabled={garminConnecting}
             >
-              Save credentials
+              {garminConnecting ? "Connecting…" : "Connect Garmin"}
             </button>
           </div>
-        </details>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={importFromGarmin}
+              className="px-4 py-2 rounded-lg ring-1 ring-slate-700 text-slate-200 hover:bg-slate-800 text-sm"
+            >
+              Re-import profile
+            </button>
+            <button
+              type="button"
+              onClick={disconnectGarmin}
+              className="px-4 py-2 rounded-lg ring-1 ring-rose-800/50 text-rose-400 hover:bg-rose-900/20 text-sm"
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

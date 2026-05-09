@@ -15,6 +15,10 @@ class Settings(BaseSettings):
 
     FERNET_KEY: str = ""
 
+    STRAVA_CLIENT_ID: str = ""
+    STRAVA_CLIENT_SECRET: str = ""
+    STRAVA_REDIRECT_URI: str = "http://localhost:8000/strava/callback"
+
     MCP_SERVER_URL: str = ""
 
     CORS_ORIGINS: str = "http://localhost:5173"

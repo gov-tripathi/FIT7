@@ -203,8 +203,45 @@ def _session_path(user_id: str) -> str:
     return os.path.join(_SESSION_CACHE_DIR, user_id)
 
 
-def _login(user_id: str, garmin_email: str, garmin_password: str):
-    """Return an authenticated Garmin client, reusing a cached session when possible."""
+def has_garth_session(user_id: str) -> bool:
+    """Return True if valid garth OAuth tokens are cached on disk."""
+    session_dir = _session_path(user_id)
+    return os.path.exists(os.path.join(session_dir, "oauth2_token.json"))
+
+
+def direct_login(user_id: str, email: str, password: str) -> dict[str, Any]:
+    """Log in via garth's direct HTTP OAuth flow (no browser required).
+
+    Saves OAuth1 + OAuth2 tokens to disk so subsequent syncs reuse them
+    without touching the SSO endpoint again.
+    """
+    import garth as garth_lib  # type: ignore
+
+    c = garth_lib.Client()
+    try:
+        c.login(email, password)
+    except Exception as e:
+        msg = str(e)
+        if "429" in msg or "Too Many Requests" in msg:
+            raise GarminSyncError(
+                "Garmin rate-limited this account. Wait 30–60 min then try again."
+            )
+        if "403" in msg or "Invalid" in msg or "credentials" in msg.lower():
+            raise GarminSyncError(
+                "Garmin rejected the credentials. Check email and password."
+            )
+        raise GarminSyncError(f"Garmin login failed: {e}")
+
+    session_dir = _session_path(user_id)
+    os.makedirs(session_dir, exist_ok=True)
+    c.dump(session_dir)
+    display_name = (c.profile or {}).get("displayName") or email
+    logger.info("Garmin direct login OK for user=%s display_name=%s", user_id, display_name)
+    return {"display_name": display_name, "username": c.username}
+
+
+def _login(user_id: str, garmin_email: str | None, garmin_password: str | None):
+    """Return an authenticated Garmin client, reusing cached garth tokens when possible."""
     from garminconnect import (  # type: ignore
         Garmin,
         GarminConnectAuthenticationError,
@@ -214,13 +251,11 @@ def _login(user_id: str, garmin_email: str, garmin_password: str):
 
     session_dir = _session_path(user_id)
 
-    # Try cached session first — this avoids hitting SSO at all.
+    # Try cached garth tokens first — avoids SSO entirely.
     try:
         client = Garmin()
-        client.login(session_dir)  # load persisted tokens
-        # Sanity check: touch a lightweight endpoint to confirm tokens aren't expired.
-        client.get_user_profile()
-        logger.info("Garmin: reused cached session for user=%s", user_id)
+        client.login(session_dir)
+        logger.info("Garmin: reused cached garth session for user=%s", user_id)
         return client
     except Exception as e:
         logger.info(
@@ -228,14 +263,19 @@ def _login(user_id: str, garmin_email: str, garmin_password: str):
             type(e).__name__,
         )
 
-    # Fresh login — rate-limited path. Persist tokens for next time.
+    if not (garmin_email and garmin_password):
+        raise GarminSyncError(
+            "Garmin session expired. Re-connect from Settings → Garmin."
+        )
+
+    # Fresh login — persist tokens for next time.
     try:
         client = Garmin(garmin_email, garmin_password)
         client.login()
         try:
             client.garth.dump(session_dir)
-        except Exception as e:  # pragma: no cover
-            logger.warning("Could not persist Garmin session: %s", e)
+        except Exception as dump_err:
+            logger.warning("Could not persist Garmin session: %s", dump_err)
         return client
     except GarminConnectAuthenticationError as e:
         raise GarminSyncError(
@@ -248,22 +288,17 @@ def _login(user_id: str, garmin_email: str, garmin_password: str):
         )
     except GarminConnectConnectionError as e:
         raise GarminSyncError(
-            "Garmin connection failed. If you're on a corporate or VPN "
-            f"network with TLS inspection, ensure its root CA is trusted. Detail: {e}"
+            f"Garmin connection failed. Detail: {e}"
         )
     except Exception as e:
         msg = str(e)
         if "429" in msg or "Too Many Requests" in msg:
             raise GarminSyncError(
-                "Garmin has rate-limited this account (HTTP 429). "
-                "Wait ~30–60 min before trying again. This usually happens after "
-                "several rapid sync attempts."
+                "Garmin rate-limited this account (HTTP 429). Wait ~30–60 min."
             )
         if "403" in msg:
             raise GarminSyncError(
-                "Garmin refused the login (HTTP 403). Common causes: MFA is "
-                "enabled on the account (unsupported by the unofficial library), "
-                "account is locked, or region mismatch."
+                "Garmin refused the login (HTTP 403). MFA enabled or account locked."
             )
         raise GarminSyncError(f"Garmin login failed ({type(e).__name__}): {e}")
 
@@ -489,7 +524,8 @@ def sync_user(
         except garmin_http.GarminApiError as e:
             raise GarminSyncError(f"Garmin API error: {e}")
 
-    if garmin_email and garmin_password:
+    # Use garth token cache (set by direct_login) or fall back to password.
+    if has_garth_session(user_id) or (garmin_email and garmin_password):
         real = _pull_real_data(user_id, garmin_email, garmin_password)
         return {
             "activities": real["activities"],

@@ -70,41 +70,78 @@ def load_storage_state(user_id: str) -> dict | None:
         return None
 
 
+_CHROME_PATHS = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+]
+
+
+def _find_system_browser() -> str | None:
+    for p in _CHROME_PATHS:
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def interactive_login(user_id: str, timeout_s: int = 240) -> dict[str, Any]:
-    """Open a headed Chromium window pointed at Garmin SSO. Wait for the
+    """Open a headed browser window pointed at Garmin SSO. Wait for the
     user to complete sign-in (captcha + credentials + any MFA). Persist
     the authenticated storage state to disk.
 
-    Blocks the calling thread. Call this inside a threadpool if invoked
-    from an async FastAPI handler.
+    Prefers the system-installed Chrome/Brave over Playwright's bundled
+    Chromium — real Chrome passes Garmin's bot-detection fingerprint checks
+    that flag the Playwright binary as automation.
 
-    Raises RuntimeError if the login doesn't complete within `timeout_s`.
+    Blocks the calling thread. Call inside a threadpool from async handlers.
+    Raises RuntimeError if login doesn't complete within `timeout_s`.
     """
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout  # type: ignore
 
     out_path = storage_path(user_id)
+    system_browser = _find_system_browser()
 
-    # Keep browser profile sticky across re-logins — lets the user skip
-    # repeat captchas on the same machine.
-    user_data_dir = os.path.join(_dir(user_id), "chromium-profile")
+    # Separate profile dir per browser type so switching doesn't corrupt state.
+    profile_key = "chrome-profile" if system_browser else "chromium-profile"
+    user_data_dir = os.path.join(_dir(user_id), profile_key)
+
+    logger.info(
+        "Garmin browser login: using %s for user=%s",
+        system_browser or "Playwright Chromium",
+        user_id,
+    )
 
     t0 = time.time()
     with sync_playwright() as p:
-        logger.info("Launching Chromium for Garmin browser login (user=%s)", user_id)
-        context = p.chromium.launch_persistent_context(
+        launch_kwargs: dict = dict(
             user_data_dir=user_data_dir,
             headless=False,
-            viewport={"width": 1100, "height": 780},
+            viewport={"width": 1280, "height": 800},
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-default-browser-check",
-                "--disable-features=PasswordLeakToggleMove",
+                "--disable-infobars",
+                "--no-first-run",
+                "--password-store=basic",
+                "--disable-features=PasswordLeakToggleMove,ChromeWhatsNewUI",
             ],
+            ignore_default_args=["--enable-automation"],
         )
-        # Remove the webdriver flag so Garmin's bot-detection doesn't trip.
-        context.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-        )
+        if system_browser:
+            launch_kwargs["executable_path"] = system_browser
+
+        context = p.chromium.launch_persistent_context(**launch_kwargs)
+
+        # Anti-detection: hide navigator.webdriver and CDP artefacts.
+        # Less critical when using real Chrome, but harmless to include.
+        context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            try { delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise; } catch(e){}
+            try { delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol; } catch(e){}
+            if (!window.chrome) {
+                window.chrome = { runtime: {}, loadTimes: function(){}, csi: function(){}, app: {} };
+            }
+        """)
 
         try:
             page = context.pages[0] if context.pages else context.new_page()
@@ -182,3 +219,18 @@ def clear_session(user_id: str) -> bool:
         os.remove(p)
         removed = True
     return removed
+
+
+def clear_chromium_profile(user_id: str) -> bool:
+    """Delete the persisted Chromium profile for this user.
+
+    Useful when Garmin's bot-detection has flagged the profile — a fresh
+    profile looks like a brand-new browser install and avoids the ban.
+    """
+    import shutil
+    profile_dir = os.path.join(_dir(user_id), "chromium-profile")
+    if os.path.exists(profile_dir):
+        shutil.rmtree(profile_dir, ignore_errors=True)
+        logger.info("Cleared Chromium profile for user=%s", user_id)
+        return True
+    return False
