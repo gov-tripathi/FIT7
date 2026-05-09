@@ -171,6 +171,9 @@ class GarminWebClient:
     def hrv(self, d: date) -> dict[str, Any]:
         return self._get(f"/hrv-service/hrv/{d.isoformat()}") or {}
 
+    def training_readiness(self, d: date) -> list[dict[str, Any]]:
+        return self._get(f"/training-readiness-service/trainingreadiness/{d.isoformat()}") or []
+
     def body_composition(self, start: date, end: date) -> dict[str, Any]:
         return (
             self._get(
@@ -243,6 +246,19 @@ class GarminWebClient:
                 hrv_weekly_avg = hrv_summary.get("weeklyAvg")
                 hrv_baseline_low = (hrv_summary.get("baseline") or {}).get("balancedLow")
                 hrv_baseline_high = (hrv_summary.get("baseline") or {}).get("balancedUpper")
+            except GarminAuthExpired:
+                raise
+            except Exception:
+                pass
+            try:
+                tr_list = self.training_readiness(d) or []
+                tr = next(
+                    (t for t in tr_list if t.get("inputContext") == "AFTER_WAKEUP_RESET"),
+                    tr_list[0] if tr_list else {},
+                )
+                tr_score = tr.get("score")
+                tr_level = tr.get("level")
+                tr_feedback = tr.get("feedbackShort")
             except GarminAuthExpired:
                 raise
             except Exception:
