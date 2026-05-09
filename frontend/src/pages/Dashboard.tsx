@@ -119,6 +119,19 @@ export default function Dashboard() {
     steps: m.steps ?? 0,
   }));
 
+  const hrSeries = last30Metrics
+    .filter((m) => m.resting_hr != null)
+    .map((m) => ({ date: m.date.slice(5), rhr: m.resting_hr }));
+
+  const avgHrByDate: Record<string, number> = {};
+  for (const a of activities) {
+    if (a.avg_hr && a.date) avgHrByDate[a.date.slice(5)] = a.avg_hr;
+  }
+  const hrFullSeries = hrSeries.map((d) => ({
+    ...d,
+    avgHr: avgHrByDate[d.date] ?? null,
+  }));
+
   const avgSteps = stepsSeries.length
     ? Math.round(
         stepsSeries.reduce((s, d) => s + d.steps, 0) / stepsSeries.length
@@ -267,7 +280,7 @@ export default function Dashboard() {
           value={latestMetric?.hrv ? `${latestMetric.hrv}` : "—"}
           hint={
             latestMetric?.hrv
-              ? `ms${latestMetric.resting_hr ? ` · RHR ${latestMetric.resting_hr}` : ""}`
+              ? `ms · ${latestMetric.hrv_status ?? "last night"}`
               : "Waiting on overnight data"
           }
           trend={last14Metrics.map((m) => m.hrv ?? 0).filter((v) => v > 0)}
@@ -287,7 +300,19 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <StatCard
+          icon={Heart}
+          label="Resting HR"
+          value={latestMetric?.resting_hr ? `${latestMetric.resting_hr}` : "—"}
+          hint={
+            latestMetric?.resting_hr
+              ? `bpm · HRV ${latestMetric.hrv ?? "—"}ms`
+              : "Overnight data pending"
+          }
+          trend={hrSeries.map((d) => d.rhr ?? 0)}
+          tone="neutral"
+        />
         <StatCard
           icon={Footprints}
           label="Daily steps · 14d avg"
@@ -466,6 +491,49 @@ export default function Dashboard() {
                 stroke="#22d3ee"
                 strokeWidth={2}
                 dot={{ r: 3 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between mb-3 sm:mb-4 gap-2">
+            <h3 className="font-semibold text-sm sm:text-base">Heart rate (30d)</h3>
+            <Heart className="h-4 w-4 text-slate-500 shrink-0" />
+          </div>
+          <div className="flex items-center gap-4 mb-3 text-[11px]">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-0.5 bg-rose-400 rounded" />
+              <span className="text-slate-400">Resting HR</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-0.5 bg-orange-400 rounded" />
+              <span className="text-slate-400">Activity avg HR</span>
+            </span>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={hrFullSeries}>
+              <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
+              <XAxis dataKey="date" stroke="#64748b" fontSize={12} />
+              <YAxis stroke="#64748b" fontSize={12} domain={["dataMin - 5", "dataMax + 5"]} />
+              <Tooltip contentStyle={CHART_TOOLTIP} />
+              <Line
+                type="monotone"
+                dataKey="rhr"
+                stroke="#f87171"
+                strokeWidth={2}
+                dot={false}
+                name="Resting HR"
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey="avgHr"
+                stroke="#fb923c"
+                strokeWidth={2}
+                dot={{ r: 3, fill: "#fb923c" }}
+                name="Activity avg HR"
+                connectNulls
               />
             </LineChart>
           </ResponsiveContainer>
